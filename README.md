@@ -1,4 +1,4 @@
-# RISE Developer Cloud
+# RISC-V Developer Cloud
 
 Welcome to the central repository for the **RISC-V Developer Cloud** management software, hardware bring-up specifications, and CI integration architecture.
 
