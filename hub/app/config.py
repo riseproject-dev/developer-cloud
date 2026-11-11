@@ -6,6 +6,11 @@ PORT = int(os.environ.get("HUB_PORT", "8080"))
 DB_PATH = os.environ.get("HUB_DB_PATH", "/opt/board-farm-hub/hub.db")
 LG_COORDINATOR = os.environ.get("LG_COORDINATOR", "127.0.0.1:20408")
 SSH_KEY_PATH = os.environ.get("HUB_SSH_KEY", "")
+ADB_BIN = os.environ.get(
+    "HUB_ADB_BIN",
+    "/var/lib/tftpboot/releases/rise-android-17-v1.0-a210-evb/adb",
+)
+SERIAL_BAUD = int(os.environ.get("HUB_SERIAL_BAUD", "115200"))
 POLL_INTERVAL_SECS = int(os.environ.get("POLL_INTERVAL_SECS", "30"))
 COORDINATOR_POLL_INTERVAL_SECS = int(os.environ.get("COORDINATOR_POLL_INTERVAL_SECS", "3"))
 CLUSTER_LOCATION = os.environ.get("HUB_LOCATION", "osuosl-milne")

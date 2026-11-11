@@ -134,12 +134,13 @@ async def sse_stream():
 async def prometheus_metrics():
     boards = get_all_boards_aggregated()
     lines = [
-        "# HELP board_online Online SSH reachability (1 = online, 0 = offline)",
+        "# HELP board_online Online reachability via SSH, ADB, or serial console (1 = online, 0 = offline)",
         "# TYPE board_online gauge",
     ]
     for b in boards:
         val = 1 if b.get("is_online") else 0
-        lines.append(f'board_online{{board="{b["name"]}",ip="{b["ip_address"]}"}} {val}')
+        os_type = (b.get("os_info") or {}).get("os_type", "unknown") if val else "offline"
+        lines.append(f'board_online{{board="{b["name"]}",ip="{b["ip_address"]}",os="{os_type}"}} {val}')
 
     lines.extend([
         "# HELP board_acquired Labgrid place reservation (1 = acquired, 0 = idle)",

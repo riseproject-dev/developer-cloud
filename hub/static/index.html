@@ -133,7 +133,7 @@
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <div v-for="b in boards" :key="b.name" 
              class="bg-slate-900 border rounded-2xl p-5 flex flex-col justify-between transition-all duration-200 hover:shadow-xl hover:border-slate-700"
-             :class="b.is_k8s_worker ? 'border-purple-500/40 shadow-purple-500/5' : 'border-slate-800'">
+             :class="b.is_k8s_worker ? 'border-purple-500/40 shadow-purple-500/5' : (b.os_info?.os_type === 'android' ? 'border-lime-500/40 shadow-lime-500/5' : 'border-slate-800')">
           
           <div>
             <!-- Card Header -->
@@ -144,7 +144,12 @@
                   <span class="px-2 py-0.5 text-xs font-semibold rounded bg-slate-800 text-slate-300 font-mono">{{ b.short_name }}</span>
                 </div>
                 <div class="flex items-center space-x-3 text-xs text-slate-400 mt-1 font-mono">
-                  <span><i class="fa-solid fa-network-wired mr-1 text-slate-500"></i>{{ b.ip_address }}</span>
+                  <span v-if="b.os_info?.os_type === 'android' && b.os_info?.probe_method === 'serial'">
+                    <i class="fa-brands fa-android mr-1 text-lime-400"></i>UART Console
+                  </span>
+                  <span v-else>
+                    <i class="fa-solid fa-network-wired mr-1 text-slate-500"></i>{{ b.ip_address }}
+                  </span>
                   <span><i class="fa-solid fa-terminal mr-1 text-slate-500"></i>{{ b.serial_port }}</span>
                 </div>
               </div>
@@ -179,6 +184,25 @@
               </div>
             </div>
 
+            <!-- Android OS Spotlight Banner -->
+            <div v-if="b.os_info?.os_type === 'android'" class="mt-4 p-3 rounded-xl bg-gradient-to-r from-lime-950/60 to-emerald-950/40 border border-lime-500/30">
+              <div class="flex items-center justify-between text-xs">
+                <span class="font-bold text-lime-300 flex items-center">
+                  <i class="fa-brands fa-android mr-1.5 text-lime-400 text-sm"></i>
+                  Android {{ b.os_info.android_version }}:
+                  <span class="ml-1" :class="b.os_info.boot_completed ? 'text-emerald-400' : 'text-amber-400'">
+                    {{ b.os_info.boot_completed ? 'Booted' : 'Booting' }}
+                  </span>
+                </span>
+                <span class="text-lime-300/80 font-mono text-[11px]">
+                  via {{ (b.os_info.probe_method || 'serial').toUpperCase() }} &bull; adbd: {{ b.os_info.adbd_status || 'running' }}
+                </span>
+              </div>
+              <div class="text-[11px] text-lime-200/70 mt-1 font-mono truncate" :title="b.os_info.build_display">
+                {{ b.os_info.build_display || 'AOSP riscv64' }}
+              </div>
+            </div>
+
             <!-- Hardware Badges -->
             <div class="flex flex-wrap gap-1.5 mt-4">
               <span class="px-2 py-0.5 text-[11px] rounded bg-slate-800 text-slate-300 border border-slate-700/50">
@@ -188,10 +212,10 @@
                 <i class="fa-solid fa-location-dot mr-1 text-rose-400"></i>{{ b.location || 'osuosl-milne' }}
               </span>
               <span class="px-2 py-0.5 text-[11px] rounded bg-slate-800 text-slate-300 border border-slate-700/50">
-                <i class="fa-solid fa-memory mr-1 text-indigo-400"></i>4 GB LPDDR4x
+                <i class="fa-solid fa-memory mr-1 text-indigo-400"></i>{{ b.ram_total_mb > 5000 ? '8 GB' : '4 GB' }} LPDDR4x
               </span>
               <span class="px-2 py-0.5 text-[11px] rounded bg-slate-800 text-slate-300 border border-slate-700/50">
-                <i class="fa-solid fa-hard-drive mr-1 text-emerald-400"></i>32 GB eMMC
+                <i class="fa-solid fa-hard-drive mr-1 text-emerald-400"></i>{{ b.disk_total_gb > 40 ? '64 GB' : '32 GB' }} eMMC
               </span>
               <span class="px-2 py-0.5 text-[11px] rounded bg-slate-800 text-slate-300 border border-slate-700/50">
                 <i class="fa-solid fa-chart-line mr-1 text-teal-400"></i>LFX Telemetry
@@ -227,7 +251,7 @@
               <!-- Storage Usage -->
               <div>
                 <div class="flex justify-between text-xs mb-1">
-                  <span class="text-slate-400">eMMC Rootfs Storage</span>
+                  <span class="text-slate-400">{{ b.os_info?.os_type === 'android' ? 'eMMC /data Storage' : 'eMMC Rootfs Storage' }}</span>
                   <span class="font-mono text-slate-200">{{ b.disk_used_gb?.toFixed(1) }} GB / {{ b.disk_total_gb?.toFixed(1) }} GB ({{ calcPct(b.disk_used_gb, b.disk_total_gb) }}%)</span>
                 </div>
                 <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
@@ -244,9 +268,10 @@
               <span class="text-slate-300 font-mono">{{ formatUptime(b.uptime_seconds) }}</span>
             </div>
             <div class="flex items-center justify-between text-slate-400">
-              <span><i class="fa-brands fa-linux mr-1 text-slate-500"></i>Kernel:</span>
-              <span class="text-slate-200 font-mono text-[11px] truncate max-w-[200px]" :title="b.kernel_version">
-                {{ b.kernel_version || 'Linux 7.2.3' }}
+              <span v-if="b.os_info?.os_type === 'android'"><i class="fa-brands fa-android mr-1 text-lime-400"></i>OS / Kernel:</span>
+              <span v-else><i class="fa-brands fa-linux mr-1 text-slate-500"></i>Kernel:</span>
+              <span class="text-slate-200 font-mono text-[11px] truncate max-w-[210px]" :title="b.kernel_version">
+                {{ b.kernel_version || 'Linux 7.2.8' }}
               </span>
             </div>
             <div class="flex items-center justify-between text-slate-400">

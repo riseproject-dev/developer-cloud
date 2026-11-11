@@ -1,7 +1,7 @@
 import sqlite3
 import json
 import os
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
 from app.config import DB_PATH, BOARD_DEFINITIONS
 
@@ -41,6 +41,7 @@ def init_db():
             disk_total_gb REAL DEFAULT 0.0,
             kernel_version TEXT,
             k8s_status TEXT DEFAULT '{}',
+            os_info TEXT DEFAULT '{}',
             polled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -62,6 +63,11 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         """)
+
+        # Idempotent migration for existing hub.db deployments
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(board_telemetry)").fetchall()}
+        if "os_info" not in cols:
+            conn.execute("ALTER TABLE board_telemetry ADD COLUMN os_info TEXT DEFAULT '{}';")
 
         # Seed initial entries
         for name, defn in BOARD_DEFINITIONS.items():
@@ -95,12 +101,29 @@ def upsert_place(name: str, status: str, acquired_by: Optional[str], tags: Dict[
         """, (name, status, acquired_by, json.dumps(tags), json.dumps(matches)))
         conn.commit()
 
+def get_place_and_online_state(board_id: str) -> Tuple[str, bool]:
+    with get_db_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT p.status AS status, COALESCE(t.is_online, 0) AS is_online
+            FROM places p
+            LEFT JOIN board_telemetry t ON p.name = t.board_id
+            WHERE p.name = ?
+            """,
+            (board_id,),
+        ).fetchone()
+        if not row:
+            return ("idle", False)
+        return (row["status"] or "idle", bool(row["is_online"]))
+
+
 def upsert_telemetry(board_id: str, is_online: bool, uptime_seconds: int, load_avg: List[float],
                      ram_used_mb: int, ram_total_mb: int, disk_used_gb: float, disk_total_gb: float,
-                     kernel: str, k8s_status: Dict[str, Any]):
+                     kernel: str, k8s_status: Dict[str, Any],
+                     os_info: Optional[Dict[str, Any]] = None):
     with get_db_connection() as conn:
         # Check if uptime dropped, which indicates a reboot cycle!
-        row = conn.execute("SELECT uptime_seconds FROM board_telemetry WHERE board_id = ?", (board_id,)).fetchone()
+        row = conn.execute("SELECT uptime_seconds, is_online, os_info FROM board_telemetry WHERE board_id = ?", (board_id,)).fetchone()
         if row and row["uptime_seconds"] > 0 and uptime_seconds < row["uptime_seconds"] and is_online:
             conn.execute("""
             UPDATE cycle_counters SET
@@ -114,6 +137,16 @@ def upsert_telemetry(board_id: str, is_online: bool, uptime_seconds: int, load_a
             INSERT INTO events_log (board_id, event_type, message)
             VALUES (?, 'reboot', 'Detected board reboot event (uptime reset)')
             """, (board_id,))
+        elif row and not row["is_online"] and is_online:
+            os_label = ""
+            if os_info and os_info.get("os_type") == "android":
+                ver = os_info.get("android_version", "")
+                via = os_info.get("probe_method", "serial")
+                os_label = f" (Android {ver} via {via})"
+            conn.execute("""
+            INSERT INTO events_log (board_id, event_type, message)
+            VALUES (?, 'online', ?)
+            """, (board_id, f"Board came online{os_label}"))
 
         load_1m = load_avg[0] if len(load_avg) > 0 else 0.0
         load_5m = load_avg[1] if len(load_avg) > 1 else 0.0
@@ -132,11 +165,12 @@ def upsert_telemetry(board_id: str, is_online: bool, uptime_seconds: int, load_a
             disk_total_gb = ?,
             kernel_version = ?,
             k8s_status = ?,
+            os_info = ?,
             polled_at = CURRENT_TIMESTAMP
         WHERE board_id = ?
         """, (is_online, uptime_seconds, load_1m, load_5m, load_15m,
               ram_used_mb, ram_total_mb, disk_used_gb, disk_total_gb,
-              kernel, json.dumps(k8s_status), board_id))
+              kernel, json.dumps(k8s_status), json.dumps(os_info or {}), board_id))
         conn.commit()
 
 def add_event(board_id: Optional[str], event_type: str, message: str):
@@ -153,7 +187,7 @@ def get_all_boards_aggregated() -> List[Dict[str, Any]]:
             t.ip_address, t.serial_port, t.is_online, t.uptime_seconds,
             t.load_1m, t.load_5m, t.load_15m,
             t.ram_used_mb, t.ram_total_mb, t.disk_used_gb, t.disk_total_gb,
-            t.kernel_version, t.k8s_status, t.polled_at,
+            t.kernel_version, t.k8s_status, t.os_info, t.polled_at,
             c.session_uboot_cycles, c.lifetime_uboot_cycles,
             c.session_fastboot_flashes, c.lifetime_fastboot_flashes, c.last_boot_time
         FROM places p
@@ -167,6 +201,7 @@ def get_all_boards_aggregated() -> List[Dict[str, Any]]:
             item["tags"] = json.loads(item["tags"]) if item["tags"] else {}
             item["matches"] = json.loads(item["matches"]) if item["matches"] else []
             item["k8s_status"] = json.loads(item["k8s_status"]) if item["k8s_status"] else {}
+            item["os_info"] = json.loads(item["os_info"]) if item.get("os_info") else {}
             # Merge definition metadata
             defn = BOARD_DEFINITIONS.get(item["name"], {})
             item["short_name"] = defn.get("short_name", item["name"])
