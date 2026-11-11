@@ -1,6 +1,6 @@
-# RISE Board Farm
+# RISE Developer Cloud
 
-Welcome to the central repository for the **RISE RISC-V Board Farm** management software, hardware bring-up specifications, and CI integration architecture hosted at RISE Board Farm.
+Welcome to the central repository for the **RISC-V Developer Cloud** management software, hardware bring-up specifications, and CI integration architecture.
 
 ## About RISE
 
@@ -10,7 +10,7 @@ Welcome to the central repository for the **RISE RISC-V Board Farm** management 
 
 ## 1. Vision & Purpose
 
-The core mission of the **RISE Board Farm** is to **democratize access to physical RISC-V hardware**, accelerating software maturity, toolchain readiness, kernel enablement, and upstreaming across the entire ecosystem.
+The core mission of the **RISC-V Developer Cloud** is to **democratize access to physical RISC-V hardware**, accelerating software maturity, toolchain readiness, kernel enablement, and upstreaming across the entire ecosystem.
 
 * **Moving Beyond QEMU:** Software emulation via QEMU is widely available, but physical silicon is essential for validating real-world hardware performance, cache hierarchies, memory controller behavior, hardware vector extensions (RVV), peripheral driver stability, and true hardware regression testing.
 * **Empowering Open-Source Maintainers:** Providing reliable, automated bare-metal infrastructure enables distribution maintainers (Debian, Ubuntu, RHEL, Gentoo) and upstream developers to build, test, and benchmark daily mainline kernels and application toolchains directly on real RISC-V hardware.
@@ -19,7 +19,7 @@ The core mission of the **RISE Board Farm** is to **democratize access to physic
 
 ## 2. Current Rollout Status
 
-* **Deployment Location:** Physical hardware is hosted and co-located at the **Oregon State University Open Source Lab (RISE Board Farm)**.
+* **Deployment Location:** Physical hardware is hosted and co-located at the **Oregon State University** (NORAM/USA), **Scaleway** (EMEA/France), and **SOPIC** (APAC/China).
 * **Current Phase:** **Phase 1 (Labgrid Pilot MVP)**.
 * **Active Hardware Cluster:** The pilot is built around an initial allocation of 20 **Alibaba Zhihe A210** boards donated by Alibaba.
 * **Active Focus Areas:**
@@ -30,7 +30,7 @@ The core mission of the **RISE Board Farm** is to **democratize access to physic
 
 ## 3. Architecture Roadmap & Phased Execution
 
-The board farm rollout is structured into two macro phases:
+The rollout is structured into two macro phases:
 * **Phase 1 (Labgrid Pilot):** Delivers automated hardware access for kernel testing, CI runners, and SSH debugging using a lightweight Labgrid setup.
 * **Phase 2 (OpenStack Cloud Production):** Scales management into a production multi-tenant bare-metal cloud leveraging OpenStack Ironic, Redfish APIs, and OpenBMC controllers.
 
