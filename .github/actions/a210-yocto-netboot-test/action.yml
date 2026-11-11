@@ -113,6 +113,10 @@ runs:
         if [ -f yocto_allocated_place.txt ]; then
           ALLOCATED="$(tr -d '\r\n' < yocto_allocated_place.txt)"
         fi
+        if [ -d "/var/lib/tftpboot/builds/${BUILD_ID}" ]; then
+          cp -f yocto_serial_boot.log yocto_boot_results.xml yocto_allocated_place.txt \
+            "/var/lib/tftpboot/builds/${BUILD_ID}/" 2>/dev/null || true
+        fi
         {
           echo "### Zhihe A210 Yocto Hardware Netboot Summary"
           echo "- **Labgrid Pool**: \`pool=${POOL}\` (allocated place: \`${ALLOCATED}\`)"

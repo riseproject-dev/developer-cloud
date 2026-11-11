@@ -263,8 +263,8 @@ def test_zhihe_a210_yocto_ram_netboot(
                         ser,
                         "printf '===CI_PROBE_%s===\\n' START; "
                         "uname -a; "
-                        "echo KERNEL_RELEASE=$(uname -r); "
-                        "echo CORES=$(nproc); "
+                        "printf 'KERNEL_%s=%s\\n' RELEASE \"$(uname -r)\"; "
+                        "printf '%s=%s\\n' CORES \"$(nproc)\"; "
                         "cat /etc/issue; "
                         "ip addr show dev eth0 || true; "
                         "printf '===CI_PROBE_%s===\\n' END",
@@ -279,11 +279,19 @@ def test_zhihe_a210_yocto_ram_netboot(
             assert "nomap non-reusable opensbi@80000000" in boot_buf, (
                 "Missing 'opensbi@80000000' no-map reserved-memory region in kernel boot log"
             )
-            assert "CORES=8" in boot_buf, "Expected all 8 RISC-V cores online (CORES=8)"
 
-            uname_match = re.search(r"KERNEL_RELEASE=(\S+)", boot_buf)
+            probe_output = (
+                boot_buf.split("===CI_PROBE_START===", 1)[-1].split("===CI_PROBE_END===", 1)[0]
+                if "===CI_PROBE_START===" in boot_buf
+                else boot_buf
+            )
+            assert "CORES=8" in probe_output, "Expected all 8 RISC-V cores online (CORES=8)"
+
+            uname_match = re.search(r"KERNEL_RELEASE=([0-9]\S*)", probe_output)
             if not uname_match:
-                uname_match = re.search(r"Linux\s+(?:zhihe-a210\s+)?(\S+).*riscv64", boot_buf)
+                uname_match = re.search(
+                    r"Linux\s+(?:zhihe-a210\s+)?([0-9]\S*).*riscv64", probe_output
+                )
             assert uname_match, "Could not parse kernel release from 'uname' output in probe"
             kernel_rel = uname_match.group(1)
             print(
