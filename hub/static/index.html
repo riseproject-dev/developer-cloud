@@ -46,7 +46,7 @@
               <h1 class="text-xl font-bold tracking-tight text-white">RISE Board Farm Hub</h1>
               <span class="px-2 py-0.5 text-xs font-semibold rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Live</span>
             </div>
-            <p class="text-xs text-slate-400">OSU OSL RISC-V Test Cluster &bull; Labgrid & Kubernetes</p>
+            <p class="text-xs text-slate-400">OSU OSL RISC-V Test Cluster &bull; Labgrid &amp; Kubernetes</p>
           </div>
         </div>
 
@@ -79,13 +79,13 @@
 
     <!-- Main Content -->
     <main class="flex-1 max-w-7xl w-full mx-auto p-6 space-y-6">
-      
+
       <!-- Cluster Notice / Quick Stats Banner -->
       <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
           <div>
             <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Total Cluster Nodes</div>
-            <div class="text-2xl font-bold text-white mt-1">5 <span class="text-sm font-normal text-slate-400">Zhihe A210</span></div>
+            <div class="text-2xl font-bold text-white mt-1">{{ boards.length || 5 }} <span class="text-sm font-normal text-slate-400">Zhihe A210</span></div>
           </div>
           <div class="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center text-slate-300">
             <i class="fa-solid fa-cubes text-lg"></i>
@@ -108,7 +108,7 @@
           <div>
             <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Kubernetes Workers</div>
             <div class="text-2xl font-bold text-purple-400 mt-1">
-              1 <span class="text-sm font-normal text-slate-400">Ready (Flannel VXLAN)</span>
+              {{ k8sReadyCount }} <span class="text-sm font-normal text-slate-400">Ready (Flannel VXLAN)</span>
             </div>
           </div>
           <div class="w-10 h-10 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
@@ -129,12 +129,99 @@
         </div>
       </div>
 
+      <!-- Search & Tag Filter Bar -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <!-- Search Input -->
+          <div class="relative flex-1 max-w-xl">
+            <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+            <input
+              v-model="searchQuery"
+              type="text"
+              placeholder='Filter boards by tag, pool, OS, name, or IP (e.g. "yocto a210", "android", "pool=a210-yocto")...'
+              class="w-full pl-9 pr-8 py-2 rounded-xl bg-slate-950/90 border border-slate-800 focus:border-emerald-500/60 focus:outline-none text-xs text-slate-100 placeholder-slate-500 font-mono transition"
+            />
+            <button
+              v-if="searchQuery"
+              @click="searchQuery = ''"
+              title="Clear search"
+              class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 text-xs px-1"
+            >
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+
+          <!-- Status & Workload Quick Filter Pills -->
+          <div class="flex flex-wrap items-center gap-1.5 text-xs">
+            <button
+              v-for="opt in statusFilterOptions"
+              :key="opt.id"
+              @click="statusFilter = opt.id"
+              class="px-2.5 py-1 rounded-lg font-medium transition border flex items-center space-x-1.5"
+              :class="statusFilter === opt.id
+                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
+                : 'bg-slate-800/70 text-slate-400 border-slate-700/50 hover:text-slate-200 hover:border-slate-600'"
+            >
+              <i v-if="opt.icon" :class="opt.icon" class="text-[11px]"></i>
+              <span>{{ opt.label }}</span>
+              <span class="text-[10px] font-mono opacity-75">({{ opt.count }})</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Published Labgrid Tags Filter Row -->
+        <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/70">
+          <div class="flex flex-wrap items-center gap-1.5">
+            <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mr-1 flex items-center">
+              <i class="fa-solid fa-tags mr-1.5 text-cyan-400"></i>Labgrid Tags:
+            </span>
+            <button
+              v-for="t in availableTags"
+              :key="t.pair"
+              @click="toggleTag(t.pair)"
+              class="px-2 py-0.5 rounded-md text-[11px] font-mono transition border flex items-center space-x-1"
+              :class="isTagSelected(t.pair) ? getTagActiveClass(t.key, t.value) : getTagDefaultClass(t.key, t.value)"
+            >
+              <span>{{ t.key }}=<strong>{{ t.value }}</strong></span>
+              <span class="text-[10px] opacity-70">({{ t.count }})</span>
+            </button>
+            <span v-if="availableTags.length === 0" class="text-xs text-slate-500 italic">No Labgrid tags reported yet</span>
+          </div>
+
+          <!-- Active Filter Summary & Reset -->
+          <div class="flex items-center space-x-3 text-xs">
+            <span class="text-slate-400 font-mono">
+              Showing <strong class="text-slate-200">{{ filteredBoards.length }}</strong> of {{ boards.length }}
+            </span>
+            <button
+              v-if="hasActiveFilters"
+              @click="clearFilters"
+              class="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-medium transition flex items-center space-x-1"
+            >
+              <i class="fa-solid fa-filter-circle-xmark"></i>
+              <span>Clear</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty Filter Result Notice -->
+      <div v-if="boards.length > 0 && filteredBoards.length === 0" class="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center space-y-3">
+        <div class="text-slate-400 text-sm">
+          <i class="fa-solid fa-magnifying-glass mr-1.5 text-slate-500"></i>
+          No boards match your current filter criteria.
+        </div>
+        <button @click="clearFilters" class="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition">
+          Reset all filters
+        </button>
+      </div>
+
       <!-- Boards Cards Grid -->
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <div v-for="b in boards" :key="b.name" 
+        <div v-for="b in filteredBoards" :key="b.name"
              class="bg-slate-900 border rounded-2xl p-5 flex flex-col justify-between transition-all duration-200 hover:shadow-xl hover:border-slate-700"
              :class="b.is_k8s_worker ? 'border-purple-500/40 shadow-purple-500/5' : (b.os_info?.os_type === 'android' ? 'border-lime-500/40 shadow-lime-500/5' : 'border-slate-800')">
-          
+
           <div>
             <!-- Card Header -->
             <div class="flex items-start justify-between">
@@ -203,8 +290,27 @@
               </div>
             </div>
 
+            <!-- Published Labgrid Tags on Card -->
+            <div v-if="sortedBoardTags(b).length > 0" class="mt-4">
+              <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5 flex items-center">
+                <i class="fa-solid fa-tag mr-1 text-slate-500"></i>Labgrid Tags
+              </div>
+              <div class="flex flex-wrap gap-1.5">
+                <button
+                  v-for="t in sortedBoardTags(b)"
+                  :key="t.pair"
+                  @click="toggleTag(t.pair)"
+                  :title="'Click to filter by ' + t.pair"
+                  class="px-2 py-0.5 text-[11px] font-mono rounded border transition cursor-pointer"
+                  :class="isTagSelected(t.pair) ? getTagActiveClass(t.key, t.value) : getTagDefaultClass(t.key, t.value)"
+                >
+                  <span class="opacity-75">{{ t.key }}=</span><span class="font-semibold">{{ t.value }}</span>
+                </button>
+              </div>
+            </div>
+
             <!-- Hardware Badges -->
-            <div class="flex flex-wrap gap-1.5 mt-4">
+            <div class="flex flex-wrap gap-1.5 mt-3">
               <span class="px-2 py-0.5 text-[11px] rounded bg-slate-800 text-slate-300 border border-slate-700/50">
                 <i class="fa-solid fa-microchip mr-1 text-cyan-400"></i>{{ b.soc }}
               </span>
@@ -231,8 +337,8 @@
                   <span class="font-mono text-slate-200 font-semibold">{{ b.load_1m?.toFixed(2) }} / {{ b.load_5m?.toFixed(2) }} / {{ b.load_15m?.toFixed(2) }}</span>
                 </div>
                 <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-                  <div class="h-1.5 rounded-full transition-all duration-500" 
-                       :class="getLoadColor(b.load_1m)" 
+                  <div class="h-1.5 rounded-full transition-all duration-500"
+                       :class="getLoadColor(b.load_1m)"
                        :style="{ width: Math.min((b.load_1m / 4.0) * 100, 100) + '%' }"></div>
                 </div>
               </div>
@@ -290,7 +396,7 @@
         <div class="flex items-center justify-between">
           <div class="flex items-center space-x-2">
             <i class="fa-solid fa-list-check text-emerald-400"></i>
-            <h3 class="text-base font-bold text-white">Cluster Activity & Event Stream</h3>
+            <h3 class="text-base font-bold text-white">Cluster Activity &amp; Event Stream</h3>
           </div>
           <span class="text-xs text-slate-400 font-mono">Auto-updates via SSE</span>
         </div>
@@ -306,19 +412,19 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-800/60">
-              <tr v-for="ev in events" :key="ev.id" class="hover:bg-slate-800/30">
+              <tr v-for="ev in filteredEvents" :key="ev.id" class="hover:bg-slate-800/30">
                 <td class="py-2.5 px-3 font-mono text-slate-400 whitespace-nowrap">{{ ev.created_at }}</td>
                 <td class="py-2.5 px-3 font-semibold text-white">{{ ev.board_id || 'System' }}</td>
                 <td class="py-2.5 px-3">
                   <span class="px-2 py-0.5 rounded text-[10px] font-mono uppercase"
-                        :class="ev.event_type === 'reboot' ? 'bg-cyan-500/10 text-cyan-400' : 'bg-slate-800 text-slate-300'">
+                        :class="ev.event_type === 'reboot' ? 'bg-cyan-500/10 text-cyan-400' : (ev.event_type === 'online' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-slate-800 text-slate-300')">
                     {{ ev.event_type }}
                   </span>
                 </td>
                 <td class="py-2.5 px-3 text-slate-300">{{ ev.message }}</td>
               </tr>
-              <tr v-if="events.length === 0">
-                <td colspan="4" class="py-4 text-center text-slate-500">No events logged yet.</td>
+              <tr v-if="filteredEvents.length === 0">
+                <td colspan="4" class="py-4 text-center text-slate-500">No matching events logged.</td>
               </tr>
             </tbody>
           </table>
@@ -342,7 +448,7 @@
   </div>
 
   <script>
-    const { createApp, ref, computed, onMounted } = Vue;
+    const { createApp, ref, computed, watch, onMounted } = Vue;
 
     // =========================================================================
     // Remote Relay Configuration (e.g. Google Apps Script Web App /exec URL)
@@ -352,8 +458,11 @@
     //   is empty, it uses the local `/api/v1/stream` SSE & `/api/v1/boards` API.
     // =========================================================================
     const DEFAULT_REMOTE_API_URL = "https://script.google.com/macros/s/AKfycbwv98a34Xys62GcmMtx_3crm_dAxvrvpWIRZLm1QwHxpkmnmkL2igX_pfGXwEqkD4se/exec";
-    const REMOTE_API_URL = new URLSearchParams(window.location.search).get("api") || DEFAULT_REMOTE_API_URL;
+    const initialParams = new URLSearchParams(window.location.search);
+    const REMOTE_API_URL = initialParams.get("api") || DEFAULT_REMOTE_API_URL;
     const REMOTE_POLL_INTERVAL_MS = 3000;
+
+    const TAG_KEY_PRIORITY = { pool: 0, board: 1, model: 2, arch: 3 };
 
     createApp({
       setup() {
@@ -364,10 +473,212 @@
         const coordinatorStatus = ref("127.0.0.1:20408");
         const isRemoteMode = Boolean(REMOTE_API_URL);
 
+        // Filter state (initialized from URL query parameters if present)
+        const searchQuery = ref(initialParams.get("q") || "");
+        const statusFilter = ref(initialParams.get("status") || "all");
+        const selectedTags = ref(
+          (initialParams.get("tags") || "")
+            .split(",")
+            .map(s => s.trim())
+            .filter(Boolean)
+        );
+
+        const syncUrlParams = () => {
+          try {
+            const params = new URLSearchParams(window.location.search);
+            if (searchQuery.value.trim()) {
+              params.set("q", searchQuery.value.trim());
+            } else {
+              params.delete("q");
+            }
+            if (statusFilter.value && statusFilter.value !== "all") {
+              params.set("status", statusFilter.value);
+            } else {
+              params.delete("status");
+            }
+            if (selectedTags.value.length > 0) {
+              params.set("tags", selectedTags.value.join(","));
+            } else {
+              params.delete("tags");
+            }
+            const qs = params.toString();
+            const nextUrl = window.location.pathname + (qs ? `?${qs}` : "") + window.location.hash;
+            window.history.replaceState(null, "", nextUrl);
+          } catch (_) {
+            // Ignore history errors on restricted origins
+          }
+        };
+
+        watch([searchQuery, statusFilter, selectedTags], syncUrlParams, { deep: true });
+
         const onlineCount = computed(() => boards.value.filter(b => b.is_online).length);
+        const offlineCount = computed(() => boards.value.filter(b => !b.is_online).length);
         const acquiredCount = computed(() => boards.value.filter(b => b.status === 'acquired').length);
-        const idleCount = computed(() => boards.value.filter(b => b.status === 'idle').length);
+        const idleCount = computed(() => boards.value.filter(b => b.is_online && b.status === 'idle').length);
+        const androidCount = computed(() => boards.value.filter(b => b.os_info?.os_type === 'android').length);
+        const k8sCount = computed(() => boards.value.filter(b => b.is_k8s_worker).length);
+        const k8sReadyCount = computed(() => boards.value.filter(b => b.is_k8s_worker && (b.k8s_status?.ready || b.is_online)).length);
         const totalLifetimeBoots = computed(() => boards.value.reduce((acc, b) => acc + (b.lifetime_uboot_cycles || 0), 0));
+
+        const statusFilterOptions = computed(() => {
+          const opts = [
+            { id: 'all', label: 'All', count: boards.value.length, icon: '' },
+            { id: 'online', label: 'Online', count: onlineCount.value, icon: 'fa-solid fa-circle-check text-emerald-400' },
+            { id: 'idle', label: 'Idle', count: idleCount.value, icon: 'fa-solid fa-check text-teal-400' },
+            { id: 'acquired', label: 'Acquired', count: acquiredCount.value, icon: 'fa-solid fa-lock text-amber-400' },
+          ];
+          if (offlineCount.value > 0 || statusFilter.value === 'offline') {
+            opts.push({ id: 'offline', label: 'Offline', count: offlineCount.value, icon: 'fa-solid fa-circle-xmark text-rose-400' });
+          }
+          if (androidCount.value > 0 || statusFilter.value === 'android') {
+            opts.push({ id: 'android', label: 'Android', count: androidCount.value, icon: 'fa-brands fa-android text-lime-400' });
+          }
+          if (k8sCount.value > 0 || statusFilter.value === 'k8s') {
+            opts.push({ id: 'k8s', label: 'K8s', count: k8sCount.value, icon: 'fa-solid fa-dharmachakra text-purple-400' });
+          }
+          return opts;
+        });
+
+        const compareTagEntries = (a, b) => {
+          const pa = TAG_KEY_PRIORITY[a.key] ?? 99;
+          const pb = TAG_KEY_PRIORITY[b.key] ?? 99;
+          if (pa !== pb) return pa - pb;
+          if (a.key !== b.key) return a.key.localeCompare(b.key);
+          return a.value.localeCompare(b.value);
+        };
+
+        const sortedBoardTags = (board) => {
+          const raw = board?.tags || {};
+          return Object.entries(raw)
+            .map(([key, val]) => ({ key, value: String(val), pair: `${key}=${val}` }))
+            .sort(compareTagEntries);
+        };
+
+        const availableTags = computed(() => {
+          const counts = new Map();
+          for (const b of boards.value) {
+            for (const t of sortedBoardTags(b)) {
+              const prev = counts.get(t.pair);
+              if (prev) {
+                prev.count += 1;
+              } else {
+                counts.set(t.pair, { ...t, count: 1 });
+              }
+            }
+          }
+          return Array.from(counts.values()).sort(compareTagEntries);
+        });
+
+        const isTagSelected = (pair) => selectedTags.value.includes(pair);
+
+        const toggleTag = (pair) => {
+          const idx = selectedTags.value.indexOf(pair);
+          if (idx >= 0) {
+            selectedTags.value.splice(idx, 1);
+          } else {
+            selectedTags.value.push(pair);
+          }
+        };
+
+        const hasActiveFilters = computed(() =>
+          Boolean(searchQuery.value.trim()) ||
+          statusFilter.value !== 'all' ||
+          selectedTags.value.length > 0
+        );
+
+        const clearFilters = () => {
+          searchQuery.value = "";
+          statusFilter.value = "all";
+          selectedTags.value = [];
+        };
+
+        const getTagDefaultClass = (key, value) => {
+          if (key === 'pool') {
+            if (value.includes('yocto')) {
+              return 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30 hover:bg-cyan-500/20';
+            }
+            if (value.includes('android')) {
+              return 'bg-lime-500/10 text-lime-300 border-lime-500/30 hover:bg-lime-500/20';
+            }
+            return 'bg-indigo-500/10 text-indigo-300 border-indigo-500/30 hover:bg-indigo-500/20';
+          }
+          return 'bg-slate-800/80 text-slate-300 border-slate-700/60 hover:border-slate-500 hover:text-white';
+        };
+
+        const getTagActiveClass = (key, value) => {
+          if (key === 'pool' && value.includes('android')) {
+            return 'bg-lime-500/25 text-lime-200 border-lime-400 ring-1 ring-lime-400/50';
+          }
+          return 'bg-cyan-500/25 text-cyan-100 border-cyan-400 ring-1 ring-cyan-400/50';
+        };
+
+        const buildSearchableText = (b) => {
+          const tagTokens = sortedBoardTags(b).flatMap(t => [t.key, t.value, t.pair]);
+          const osType = b.os_info?.os_type || (b.is_online ? 'linux debian' : '');
+          const k8sTokens = b.is_k8s_worker ? ['k8s', 'kubernetes', 'flannel'] : [];
+          const statusTokens = [
+            b.is_online ? 'online' : 'offline',
+            b.status || '',
+            b.acquired_by || '',
+          ];
+          return [
+            b.name,
+            b.short_name,
+            b.ip_address,
+            b.serial_port,
+            b.soc,
+            b.arch,
+            b.location,
+            b.kernel_version,
+            osType,
+            b.os_info?.build_display || '',
+            b.os_info?.model || '',
+            ...tagTokens,
+            ...k8sTokens,
+            ...statusTokens,
+          ]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase();
+        };
+
+        const filteredBoards = computed(() => {
+          const tokens = searchQuery.value
+            .toLowerCase()
+            .trim()
+            .split(/\s+/)
+            .filter(Boolean);
+
+          return boards.value.filter((b) => {
+            if (statusFilter.value === 'online' && !b.is_online) return false;
+            if (statusFilter.value === 'offline' && b.is_online) return false;
+            if (statusFilter.value === 'idle' && (!b.is_online || b.status !== 'idle')) return false;
+            if (statusFilter.value === 'acquired' && b.status !== 'acquired') return false;
+            if (statusFilter.value === 'android' && b.os_info?.os_type !== 'android') return false;
+            if (statusFilter.value === 'k8s' && !b.is_k8s_worker) return false;
+
+            if (selectedTags.value.length > 0) {
+              const boardPairs = new Set(sortedBoardTags(b).map(t => t.pair));
+              for (const reqTag of selectedTags.value) {
+                if (!boardPairs.has(reqTag)) return false;
+              }
+            }
+
+            if (tokens.length > 0) {
+              const haystack = buildSearchableText(b);
+              for (const tok of tokens) {
+                if (!haystack.includes(tok)) return false;
+              }
+            }
+            return true;
+          });
+        });
+
+        const filteredEvents = computed(() => {
+          if (!hasActiveFilters.value) return events.value;
+          const visibleNames = new Set(filteredBoards.value.map(b => b.name));
+          return events.value.filter(ev => !ev.board_id || visibleNames.has(ev.board_id));
+        });
 
         const fetchRemoteRelay = async () => {
           try {
@@ -495,13 +806,28 @@
         return {
           boards,
           events,
+          filteredBoards,
+          filteredEvents,
           sseConnected,
           refreshing,
           coordinatorStatus,
+          searchQuery,
+          statusFilter,
+          selectedTags,
+          statusFilterOptions,
+          availableTags,
+          hasActiveFilters,
           onlineCount,
           acquiredCount,
           idleCount,
+          k8sReadyCount,
           totalLifetimeBoots,
+          sortedBoardTags,
+          isTagSelected,
+          toggleTag,
+          clearFilters,
+          getTagDefaultClass,
+          getTagActiveClass,
           triggerRefresh,
           calcPct,
           getLoadColor,

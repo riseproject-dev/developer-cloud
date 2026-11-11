@@ -151,6 +151,16 @@ async def prometheus_metrics():
         lines.append(f'board_acquired{{board="{b["name"]}"}} {val}')
 
     lines.extend([
+        "# HELP board_tag_info Published Labgrid coordinator tags associated with each board",
+        "# TYPE board_tag_info gauge",
+    ])
+    for b in boards:
+        for t_key, t_val in sorted((b.get("tags") or {}).items()):
+            safe_k = str(t_key).replace('"', '\\"')
+            safe_v = str(t_val).replace('"', '\\"')
+            lines.append(f'board_tag_info{{board="{b["name"]}",tag_key="{safe_k}",tag_value="{safe_v}"}} 1')
+
+    lines.extend([
         "# HELP board_load_1m 1-minute CPU load average",
         "# TYPE board_load_1m gauge",
     ])

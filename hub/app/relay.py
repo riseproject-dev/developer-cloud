@@ -174,6 +174,7 @@ async def push_reservations(boards: List[Dict[str, Any]]):
         b["name"]: {
             "status": b.get("status", "offline"),
             "acquired_by": b.get("acquired_by"),
+            "tags": b.get("tags", {}),
             "last_changed_at": b.get("last_changed_at"),
         }
         for b in boards

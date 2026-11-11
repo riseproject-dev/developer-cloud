@@ -138,6 +138,7 @@ function doGet(e) {
           short_name: name,
           status: r.status || "idle",
           acquired_by: r.acquired_by || null,
+          tags: r.tags || {},
           last_changed_at: r.last_changed_at || null,
           is_online: r.status !== "offline",
         };
@@ -149,6 +150,9 @@ function doGet(e) {
         if (latestRes) {
           board.status = latestRes.status || board.status;
           board.acquired_by = latestRes.acquired_by !== undefined ? latestRes.acquired_by : board.acquired_by;
+          if (latestRes.tags) {
+            board.tags = latestRes.tags;
+          }
           board.last_changed_at = latestRes.last_changed_at || board.last_changed_at;
         }
         return board;
