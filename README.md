@@ -51,6 +51,10 @@ Phase 1 (MVP)                             Phase 2 (Production Cloud)
 
 ## 4. Navigation & Documentation Map
 
+### 📊 Status & Weekly Progress (`docs/status/`)
+* **[Current Status & Hardware Reference](docs/status/current_status.md):** Living snapshot of active bench and shelf hardware, per-board electrical/UART/DFU interfaces, OSU-OSL 3-tier host topology, active CI pools (`a210-yocto`, `a210-android`), and annotated links to OSU-OSL's engineering docs.
+* **[2026 Weekly Progress Log](docs/status/2026_weekly_progress.md):** Reverse-chronological log of weekly Board Farm and bi-weekly Developer Tooling WG updates, decisions, and milestones.
+
 ### 📁 Architectural Specs (`docs/`)
 * **[Management Software Proposal](docs/00-overview/management-software-proposal.md):** Overall project scope, phases, roadmap, and use cases.
 * **[Labgrid DHCP & TFTP Research](docs/phase-1-labgrid-pilot/labgrid-dhcp-tftp-research.md):** Labgrid 4-role process model, U-Boot TFTP vs PXE boot flows, and network isolation rules.
