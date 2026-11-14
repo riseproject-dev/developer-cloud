@@ -79,6 +79,7 @@ runs:
         PLACE: ${{ inputs.place }}
         BUILD_ID: ${{ inputs.build_id }}
         KERNEL_PREFIX: ${{ inputs.expected_kernel_prefix }}
+        VERSION: ${{ inputs.expected_kernel_prefix }}
         ACTION_REPO_ROOT: ${{ github.action_path }}/../../..
       run: |
         set -euo pipefail
@@ -123,9 +124,9 @@ runs:
           echo "- **TFTP Build Directory**: \`/var/lib/tftpboot/builds/${BUILD_ID}\`"
           if [ -f yocto_serial_boot.log ]; then
             echo ""
-            echo "#### Captured Target Probe"
+            echo "#### Captured Target Boot Tail"
             echo '```text'
-            sed -n '/===CI_PROBE_START===/,/===CI_PROBE_END===/p' yocto_serial_boot.log || tail -n 30 yocto_serial_boot.log
+            tail -n 30 yocto_serial_boot.log
             echo '```'
           fi
         } >> "$GITHUB_STEP_SUMMARY"
