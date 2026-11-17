@@ -38,6 +38,6 @@ def test_kernel_and_smp_cores(aosp):
 
 
 def test_userdata_and_metadata_mounted(aosp):
-    mounts = aosp.run_check("df -h /data /metadata", timeout=15.0)
+    mounts = aosp.run_check("grep -E ' /(data|metadata) ' /proc/mounts", timeout=15.0)
     joined = "\n".join(mounts)
-    assert "/data" in joined and "/metadata" in joined, joined
+    assert " /data " in joined and " /metadata " in joined, joined

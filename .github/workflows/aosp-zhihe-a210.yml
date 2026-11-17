@@ -32,9 +32,9 @@ on:
         default: false
         type: boolean
       expected_kernel_prefix:
-        description: "Optional expected kernel version prefix (e.g. '6.12')"
+        description: "Optional expected kernel version prefix (e.g. '7.1')"
         required: false
-        default: "6.12"
+        default: ""
         type: string
   repository_dispatch:
     types: [aosp-nightly-published]
@@ -55,7 +55,7 @@ jobs:
       REQUESTED_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag || 'latest-nightly' }}
       POOL: ${{ inputs.pool || 'a210-aosp' }}
       SKIP_FLASH: ${{ github.event_name == 'push' && 'true' || (inputs.skip_flash && 'true' || 'false') }}
-      KERNEL_PREFIX: ${{ inputs.expected_kernel_prefix || '6.12' }}
+      KERNEL_PREFIX: ${{ inputs.expected_kernel_prefix || '' }}
     steps:
       - name: Checkout developer-cloud
         uses: actions/checkout@v4
