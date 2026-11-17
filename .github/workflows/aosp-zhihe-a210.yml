@@ -62,11 +62,18 @@ jobs:
 
       - name: Resolve & Stage AOSP Release Tarball
         id: stage_release
+        if: env.SKIP_FLASH != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          AUTH_ARGS=(-H "Accept: application/vnd.github+json")
+          if [ -n "${GH_TOKEN:-}" ]; then
+            AUTH_ARGS+=(-H "Authorization: Bearer ${GH_TOKEN}")
+          fi
           TAG="${REQUESTED_TAG}"
           if [ "${TAG}" = "latest-nightly" ]; then
-            TAG="$(curl -fsSL "https://api.github.com/repos/${RELEASE_REPO}/releases?per_page=20" \
+            TAG="$(curl -fsSL "${AUTH_ARGS[@]}" "https://api.github.com/repos/${RELEASE_REPO}/releases?per_page=20" \
               | jq -r '[.[] | select(.tag_name | startswith("android-17-nightly-"))][0].tag_name // empty')"
             if [ -z "${TAG}" ]; then
               echo "::warning::No android-17-nightly-* release found yet on ${RELEASE_REPO}; falling back to android-17-v1.0"
@@ -84,7 +91,7 @@ jobs:
           mkdir -p "${REL_BASE}"
 
           # Check release assets via GitHub API to locate the *-a210-evb.tar.gz asset
-          REL_JSON="$(curl -fsSL "https://api.github.com/repos/${RELEASE_REPO}/releases/tags/${TAG}")"
+          REL_JSON="$(curl -fsSL "${AUTH_ARGS[@]}" "https://api.github.com/repos/${RELEASE_REPO}/releases/tags/${TAG}")"
           TARBALL_NAME="$(printf '%s' "${REL_JSON}" | jq -r '.assets[].name | select(endswith("-a210-evb.tar.gz"))' | head -n 1)"
           TARBALL_URL="$(printf '%s' "${REL_JSON}" | jq -r '.assets[] | select(.name | endswith("-a210-evb.tar.gz")) | .browser_download_url' | head -n 1)"
           SUMS_URL="$(printf '%s' "${REL_JSON}" | jq -r '.assets[] | select(.name == "SHA256SUMS") | .browser_download_url' | head -n 1)"
@@ -107,7 +114,7 @@ jobs:
             curl -fL --retry 3 -o "${WORK_DL}/${TARBALL_NAME}" "${TARBALL_URL}"
             if [ -n "${SUMS_URL}" ]; then
               curl -fL --retry 3 -o "${WORK_DL}/SHA256SUMS" "${SUMS_URL}"
-              (cd "${WORK_DL}" && grep " ${TARBALL_NAME}\$" SHA256SUMS | sha256sum -c -)
+              (cd "${WORK_DL}" && grep -E " (\./|\*)?${TARBALL_NAME}\$" SHA256SUMS | sha256sum -c -)
             fi
 
             echo "Extracting ${TARBALL_NAME} ..."
