@@ -19,10 +19,11 @@ _SERIAL_LOCKS: Dict[str, asyncio.Lock] = {}
 
 
 def _get_serial_lock(serial_port: str) -> asyncio.Lock:
-    lock = _SERIAL_LOCKS.get(serial_port)
+    key = os.path.realpath(serial_port)
+    lock = _SERIAL_LOCKS.get(key)
     if lock is None:
         lock = asyncio.Lock()
-        _SERIAL_LOCKS[serial_port] = lock
+        _SERIAL_LOCKS[key] = lock
     return lock
 
 
@@ -372,20 +373,21 @@ def _probe_serial_console_sync(serial_port: str) -> Tuple[str, Optional[Dict[str
       - ("offline", None) if the console does not respond or sits in U-Boot
       - ("online", dict)  if an Android or Linux shell/login prompt responds
     """
+    real_port = os.path.realpath(serial_port)
     try:
-        st = os.stat(serial_port)
+        st = os.stat(real_port)
         if not stat.S_ISCHR(st.st_mode):
             return ("offline", None)
     except OSError:
         return ("offline", None)
 
-    if _is_serial_port_in_use(serial_port):
+    if _is_serial_port_in_use(real_port):
         return ("busy", None)
 
     baud_const = getattr(termios, f"B{SERIAL_BAUD}", termios.B115200)
     fd = -1
     try:
-        fd = os.open(serial_port, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+        fd = os.open(real_port, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:

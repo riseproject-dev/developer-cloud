@@ -34,7 +34,7 @@ BOARD_DEFINITIONS: Dict[str, Dict[str, Any]] = {
     "a210-board-01": {
         "short_name": "a210-1",
         "ip": "10.6.4.12",
-        "serial_port": "/dev/ttyUSB0",
+        "serial_port": "/dev/serial/by-path/pci-0000:00:1a.0-usb-0:1.2.3:1.0-port0",
         "mac": "48:da:00:00:01:00",
         "soc": "T-Head C920 Dual-Core RISC-V",
         "arch": "riscv64",
@@ -44,7 +44,7 @@ BOARD_DEFINITIONS: Dict[str, Dict[str, Any]] = {
     "a210-board-02": {
         "short_name": "a210-2",
         "ip": "10.6.4.13",
-        "serial_port": "/dev/ttyUSB1",
+        "serial_port": "/dev/serial/by-path/pci-0000:00:1a.0-usb-0:1.2.4.1:1.0-port0",
         "mac": "48:da:00:00:02:00",
         "soc": "T-Head C920 Dual-Core RISC-V",
         "arch": "riscv64",
@@ -54,7 +54,7 @@ BOARD_DEFINITIONS: Dict[str, Dict[str, Any]] = {
     "a210-board-03": {
         "short_name": "a210-3",
         "ip": "10.6.4.14",
-        "serial_port": "/dev/ttyUSB2",
+        "serial_port": "/dev/serial/by-path/pci-0000:00:1a.0-usb-0:1.2.4.2:1.0-port0",
         "mac": "48:da:00:00:03:00",
         "soc": "T-Head C920 Dual-Core RISC-V",
         "arch": "riscv64",
@@ -64,7 +64,7 @@ BOARD_DEFINITIONS: Dict[str, Dict[str, Any]] = {
     "a210-board-04": {
         "short_name": "a210-4",
         "ip": "10.6.4.15",
-        "serial_port": "/dev/ttyUSB3",
+        "serial_port": "/dev/serial/by-path/pci-0000:00:1a.0-usb-0:1.2.4.3:1.0-port0",
         "mac": "48:da:00:00:04:00",
         "soc": "T-Head C920 Dual-Core RISC-V",
         "arch": "riscv64",
@@ -74,7 +74,7 @@ BOARD_DEFINITIONS: Dict[str, Dict[str, Any]] = {
     "a210-board-05": {
         "short_name": "a210-5",
         "ip": "10.6.4.16",
-        "serial_port": "/dev/ttyUSB4",
+        "serial_port": "/dev/serial/by-path/pci-0000:00:1a.0-usb-0:1.2.4.4:1.0-port0",
         "mac": "48:da:00:00:05:00",
         "soc": "T-Head C920 Dual-Core RISC-V",
         "arch": "riscv64",
