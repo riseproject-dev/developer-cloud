@@ -422,7 +422,11 @@ def _probe_serial_console_sync(serial_port: str) -> Tuple[str, Optional[Dict[str
         stripped = prompt_txt.strip()
 
         # Do not inject shell commands into U-Boot or SPL error prompts
-        if stripped.endswith("=>") or "### ERROR ###" in prompt_txt:
+        if (
+            stripped.endswith("=>")
+            or "u-boot#" in prompt_txt.lower()
+            or "### ERROR ###" in prompt_txt
+        ):
             return ("offline", None)
 
         # Linux console waiting at `login:` without an active shell
