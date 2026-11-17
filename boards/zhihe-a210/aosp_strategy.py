@@ -98,8 +98,10 @@ class ZhiheA210AospFastbootStrategy(Strategy):
         elif status == AospStatus.flashed:
             self.transition(AospStatus.fastboot)
             self._flash_release_images()
-            self.fastboot("reboot")
+            self.fastboot.continue_boot()
             self.target.deactivate(self.fastboot)
+            self.console.expect(r"u-boot#", timeout=15)
+            self.console.sendline("run bootcmd")
             self.console.expect(r"Linux version \d", timeout=90)
 
         elif status == AospStatus.shell:
