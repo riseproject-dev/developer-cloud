@@ -1,0 +1,15 @@
+[Unit]
+Description=RISE Developer Cloud Hardware GitHub Actions Runner (%i)
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=-/etc/default/gha-runner-devcloud-hw
+ExecStart=/opt/developer-cloud/runner/ensure-devcloud-hw-runner.sh %i
+ExecStop=/usr/bin/docker stop gha-runner-devcloud-hw-%i
+
+[Install]
+WantedBy=multi-user.target
