@@ -40,13 +40,15 @@ on:
     types: [aosp-nightly-published]
 
 concurrency:
-  group: aosp-zhihe-a210-${{ inputs.pool || 'a210-aosp' }}
+  group: aosp-zhihe-a210-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
   hw-test-a210-aosp:
     name: Flash & Smoke Test AOSP on pool=a210-aosp (OSU-OSL)
-    runs-on: [a210-aosp, osuosl]
+    runs-on:
+      group: Developer-Cloud-HW
+      labels: [a210-aosp, osuosl]
     timeout-minutes: 45
     env:
       RELEASE_REPO: ${{ github.event.client_payload.release_repo || inputs.release_repo || 'riseproject-dev/android_manifest' }}
