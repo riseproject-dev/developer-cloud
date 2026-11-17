@@ -1,0 +1,79 @@
+# Labgrid client configuration for pool-based Zhihe A210 AOSP flashing and boot
+# verification (`pool=a210-aosp`).
+#
+# Uses Labgrid's native UBootDriver (`init_commands` + `boot_commands`) to bring
+# up U-Boot DHCP and `fastboot udp`, AndroidNetFastboot + AndroidFastbootDriver
+# to flash eMMC over 1 GbE UDP port 5554, and ShellDriver on Android's UART
+# `console:/ $` shell.
+targets:
+  main:
+    resources:
+      - RemotePlace:
+          name: +
+      - AndroidNetFastboot:
+          name: net_fastboot
+          address: ""
+          port: 5554
+          protocol: udp
+    drivers:
+      - SerialDriver:
+          name: console
+          txdelay: 0.012
+      - UBootDriver:
+          name: uboot
+          prompt: 'u-boot#'
+          autoboot: 'Hit any key to stop autoboot: +[1-9]'
+          interrupt: ' '
+          init_commands:
+            - 'setenv autoload no'
+            - 'dhcp'
+          boot_commands:
+            fastboot_udp: 'fastboot udp'
+            emmc: 'run bootcmd'
+          bindings:
+            console: console
+          login_timeout: 90
+          boot_timeout: 90
+          strip_timestamp: True
+      - AndroidFastbootDriver:
+          name: fastboot
+          sparse_size: '128M'
+          flash_images:
+            gpt: emmc-gpt_primary.img
+            mmc0boot0: emmc_boot-loader.img
+            uboot_env: emmc-uboot_env.img
+            boot_a: boot.img
+            boot_b: boot.img
+            init_boot_a: init_boot.img
+            init_boot_b: init_boot.img
+            vendor_boot_a: vendor_boot.img
+            vendor_boot_b: vendor_boot.img
+            vbmeta_a: vbmeta.img
+            vbmeta_b: vbmeta.img
+            vbmeta_vendor_dlkm_a: vbmeta_vendor_dlkm.img
+            vbmeta_vendor_dlkm_b: vbmeta_vendor_dlkm.img
+            vbmeta_system_dlkm_a: vbmeta_system_dlkm.img
+            vbmeta_system_dlkm_b: vbmeta_system_dlkm.img
+            super: super.img
+          bindings:
+            fastboot: net_fastboot
+      - ShellDriver:
+          name: shell
+          prompt: 'console:/ [$#] '
+          login_prompt: '__android_no_login__'
+          username: 'shell'
+          bindings:
+            console: console
+          login_timeout: 180
+          await_login_timeout: 3
+          post_login_settle_time: 1
+      - ZhiheA210AospFastbootStrategy:
+          name: strategy
+          bindings:
+            console: console
+            uboot: uboot
+            fastboot: fastboot
+            shell: shell
+
+imports:
+  - aosp_strategy.py

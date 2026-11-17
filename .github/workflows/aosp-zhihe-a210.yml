@@ -1,0 +1,179 @@
+name: AOSP Zhihe A210 Hardware Flash & Boot Test (OSU-OSL)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/aosp-zhihe-a210.yml"
+      - "boards/zhihe-a210/client-aosp.yaml"
+      - "boards/zhihe-a210/aosp_strategy.py"
+      - "boards/zhihe-a210/pytest/test_aosp_boot.py"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag on android_manifest (e.g. 'latest-nightly', 'android-17-v1.0', or 'android-17-nightly-20261117')"
+        required: false
+        default: "latest-nightly"
+        type: string
+      release_repo:
+        description: "GitHub repository hosting AOSP release tarballs (owner/repo)"
+        required: false
+        default: "riseproject-dev/android_manifest"
+        type: string
+      pool:
+        description: "Labgrid pool tag to dynamically reserve an available board from"
+        required: false
+        default: "a210-aosp"
+        type: string
+      skip_flash:
+        description: "Skip U-Boot fastboot flashing and only run UART smoke tests on the currently booted system"
+        required: false
+        default: false
+        type: boolean
+      expected_kernel_prefix:
+        description: "Optional expected kernel version prefix (e.g. '6.12')"
+        required: false
+        default: "6.12"
+        type: string
+  repository_dispatch:
+    types: [aosp-nightly-published]
+
+concurrency:
+  group: aosp-zhihe-a210-${{ inputs.pool || 'a210-aosp' }}
+  cancel-in-progress: false
+
+jobs:
+  hw-test-a210-aosp:
+    name: Flash & Smoke Test AOSP on pool=a210-aosp (OSU-OSL)
+    runs-on: [a210-aosp, osuosl]
+    timeout-minutes: 45
+    env:
+      RELEASE_REPO: ${{ github.event.client_payload.release_repo || inputs.release_repo || 'riseproject-dev/android_manifest' }}
+      REQUESTED_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag || 'latest-nightly' }}
+      POOL: ${{ inputs.pool || 'a210-aosp' }}
+      SKIP_FLASH: ${{ github.event_name == 'push' && 'true' || (inputs.skip_flash && 'true' || 'false') }}
+      KERNEL_PREFIX: ${{ inputs.expected_kernel_prefix || '6.12' }}
+    steps:
+      - name: Checkout developer-cloud
+        uses: actions/checkout@v4
+
+      - name: Resolve & Stage AOSP Release Tarball
+        id: stage_release
+        run: |
+          set -euo pipefail
+          TAG="${REQUESTED_TAG}"
+          if [ "${TAG}" = "latest-nightly" ]; then
+            TAG="$(curl -fsSL "https://api.github.com/repos/${RELEASE_REPO}/releases?per_page=20" \
+              | jq -r '[.[] | select(.tag_name | startswith("android-17-nightly-"))][0].tag_name // empty')"
+            if [ -z "${TAG}" ]; then
+              echo "::warning::No android-17-nightly-* release found yet on ${RELEASE_REPO}; falling back to android-17-v1.0"
+              TAG="android-17-v1.0"
+            fi
+          fi
+          if [[ ! "${TAG}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "::error::Invalid release tag '${TAG}'"
+            exit 1
+          fi
+          echo "Resolved release tag: ${TAG}"
+          echo "release_tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+          REL_BASE="/var/lib/tftpboot/releases"
+          mkdir -p "${REL_BASE}"
+
+          # Check release assets via GitHub API to locate the *-a210-evb.tar.gz asset
+          REL_JSON="$(curl -fsSL "https://api.github.com/repos/${RELEASE_REPO}/releases/tags/${TAG}")"
+          TARBALL_NAME="$(printf '%s' "${REL_JSON}" | jq -r '.assets[].name | select(endswith("-a210-evb.tar.gz"))' | head -n 1)"
+          TARBALL_URL="$(printf '%s' "${REL_JSON}" | jq -r '.assets[] | select(.name | endswith("-a210-evb.tar.gz")) | .browser_download_url' | head -n 1)"
+          SUMS_URL="$(printf '%s' "${REL_JSON}" | jq -r '.assets[] | select(.name == "SHA256SUMS") | .browser_download_url' | head -n 1)"
+
+          if [ -z "${TARBALL_NAME}" ] || [ -z "${TARBALL_URL}" ]; then
+            echo "::error::Could not find *-a210-evb.tar.gz asset in ${RELEASE_REPO}@${TAG}"
+            exit 1
+          fi
+
+          DEST_DIR="${REL_BASE}/${TARBALL_NAME%.tar.gz}"
+          if [ -f "${DEST_DIR}/super.img" ] && [ -f "${DEST_DIR}/.verified-sha256" ]; then
+            echo "Reusing already-verified release directory: ${DEST_DIR}"
+          else
+            WORK_DL="${RUNNER_TEMP}/aosp-dl-${TAG}"
+            STAGE_DIR="${REL_BASE}/.staging-${TAG}-$$"
+            rm -rf "${WORK_DL}" "${STAGE_DIR}"
+            mkdir -p "${WORK_DL}" "${STAGE_DIR}"
+
+            echo "Downloading ${TARBALL_URL} ..."
+            curl -fL --retry 3 -o "${WORK_DL}/${TARBALL_NAME}" "${TARBALL_URL}"
+            if [ -n "${SUMS_URL}" ]; then
+              curl -fL --retry 3 -o "${WORK_DL}/SHA256SUMS" "${SUMS_URL}"
+              (cd "${WORK_DL}" && grep " ${TARBALL_NAME}\$" SHA256SUMS | sha256sum -c -)
+            fi
+
+            echo "Extracting ${TARBALL_NAME} ..."
+            tar -xzf "${WORK_DL}/${TARBALL_NAME}" -C "${STAGE_DIR}" --strip-components=1
+            sha256sum "${WORK_DL}/${TARBALL_NAME}" > "${STAGE_DIR}/.verified-sha256"
+            chmod -R a+rX "${STAGE_DIR}"
+            rm -rf "${DEST_DIR}" "${WORK_DL}"
+            mv "${STAGE_DIR}" "${DEST_DIR}"
+          fi
+
+          echo "release_dir=${DEST_DIR}" >> "$GITHUB_OUTPUT"
+
+          # Keep at most the 5 most recent android-17-nightly-* unpacked directories
+          ls -1dt "${REL_BASE}"/rise-android-17-nightly-*-a210-evb 2>/dev/null | tail -n +6 | xargs -r rm -rf || true
+
+      - name: Run AOSP Flash & Boot Verification via Labgrid
+        env:
+          LG_COORDINATOR: "127.0.0.1:20408"
+          RELEASE_DIR: ${{ steps.stage_release.outputs.release_dir || '' }}
+          VERSION: ${{ env.KERNEL_PREFIX }}
+        run: |
+          set -euo pipefail
+          EXTRA_ARGS=()
+          if [ "${SKIP_FLASH}" = "true" ]; then
+            EXTRA_ARGS+=(--skip-flash)
+          else
+            EXTRA_ARGS+=(--release-dir="${RELEASE_DIR}")
+          fi
+          pytest -v -s \
+            boards/zhihe-a210/pytest/test_aosp_boot.py \
+            --pool="${POOL}" \
+            --expected-kernel-prefix="${KERNEL_PREFIX}" \
+            --serial-log="aosp_serial_boot.log" \
+            --junitxml="aosp_boot_results.xml" \
+            "${EXTRA_ARGS[@]}"
+
+      - name: Publish Boot Summary
+        if: always()
+        env:
+          RESOLVED_TAG: ${{ steps.stage_release.outputs.release_tag || env.REQUESTED_TAG }}
+          RELEASE_DIR: ${{ steps.stage_release.outputs.release_dir || '(skipped flash)' }}
+        run: |
+          ALLOCATED="dynamic"
+          if [ -f aosp_allocated_place.txt ]; then
+            ALLOCATED="$(tr -d '\r\n' < aosp_allocated_place.txt)"
+          fi
+          {
+            echo "### Zhihe A210 AOSP Hardware Boot Summary"
+            echo "- **Release**: \`${RELEASE_REPO}@${RESOLVED_TAG}\`"
+            echo "- **Labgrid Pool**: \`pool=${POOL}\` (allocated place: \`${ALLOCATED}\`)"
+            echo "- **Staged Release Dir**: \`${RELEASE_DIR}\`"
+            echo "- **Skip Flash**: \`${SKIP_FLASH}\`"
+            if [ -f aosp_serial_boot.log ]; then
+              echo ""
+              echo "#### Captured Target Serial Tail"
+              echo '```text'
+              tail -n 35 aosp_serial_boot.log
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload AOSP UART Log & JUnit XML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aosp-a210-hw-results-${{ github.run_id }}
+          path: |
+            aosp_boot_results.xml
+            aosp_serial_boot.log
+            aosp_allocated_place.txt
+          if-no-files-found: warn

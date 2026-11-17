@@ -1,9 +1,10 @@
-"""pytest fixtures and Labgrid setup for Zhihe A210 TFTP boot tests."""
+"""pytest fixtures and Labgrid setup for Zhihe A210 Yocto TFTP and AOSP fastboot tests."""
 
 import json
 import os
 from pathlib import Path
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -21,8 +22,8 @@ def pytest_addoption(parser):
     parser.addoption(
         "--pool",
         action="store",
-        default="a210-yocto",
-        help="Labgrid pool tag to dynamically reserve an available board from (default: a210-yocto)",
+        default="",
+        help="Labgrid pool tag to dynamically reserve an available board from",
     )
     parser.addoption(
         "--place",
@@ -37,6 +38,24 @@ def pytest_addoption(parser):
         help="Relative directory under /var/lib/tftpboot containing Image, a210-dev.dtb, and rootfs.cpio.gz",
     )
     parser.addoption(
+        "--release-dir",
+        action="store",
+        default=os.environ.get("AOSP_RELEASE_DIR", ""),
+        help="Directory containing unpacked AOSP release images and fastboot binary",
+    )
+    parser.addoption(
+        "--skip-flash",
+        action="store_true",
+        default=False,
+        help="Skip U-Boot fastboot flashing and run smoke tests against the currently booted Android system",
+    )
+    parser.addoption(
+        "--no-wipe",
+        action="store_true",
+        default=False,
+        help="Do not erase userdata during fastboot flashing",
+    )
+    parser.addoption(
         "--serial-log",
         action="store",
         default="yocto_serial_boot.log",
@@ -46,7 +65,7 @@ def pytest_addoption(parser):
         "--expected-kernel-prefix",
         action="store",
         default="",
-        help="Optional expected kernel release prefix (e.g. '7.2.12')",
+        help="Optional expected kernel release prefix (e.g. '7.2.12' or '6.12')",
     )
 
 
@@ -104,9 +123,25 @@ def _resolve_place_endpoints(
     return allocated_place, target_ip, server_ip
 
 
+def _attach_console_logger(console, log_fp):
+    orig_read = console._read
+
+    def _logged_read(*args, **kwargs):
+        data = orig_read(*args, **kwargs)
+        if data:
+            text = data.decode("latin1", errors="replace")
+            sys.stdout.write(text)
+            sys.stdout.flush()
+            log_fp.write(text)
+            log_fp.flush()
+        return data
+
+    console._read = _logged_read
+
+
 @pytest.fixture(scope="module")
 def tftp(request):
-    pool_name = request.config.getoption("--pool")
+    pool_name = request.config.getoption("--pool") or "a210-yocto"
     place_name = request.config.getoption("--place")
     tftp_dir = request.config.getoption("--tftp-dir").strip("/")
     serial_log_path = request.config.getoption("--serial-log")
@@ -157,24 +192,12 @@ def tftp(request):
         log_fp.flush()
 
         env = Environment(str(BOARD_DIR / "client.yaml"))
-        target = env.get_target("main")
         if place_name:
-            target.resources[0].name = place_name
+            env.config.data["targets"]["main"]["resources"]["RemotePlace"]["name"] = place_name
+        target = env.get_target("main")
 
         console = target.get_driver("SerialDriver", activate=False)
-        orig_read = console._read
-
-        def _logged_read(*args, **kwargs):
-            data = orig_read(*args, **kwargs)
-            if data:
-                text = data.decode("latin1", errors="replace")
-                sys.stdout.write(text)
-                sys.stdout.flush()
-                log_fp.write(text)
-                log_fp.flush()
-            return data
-
-        console._read = _logged_read
+        _attach_console_logger(console, log_fp)
 
         strategy = target.get_driver("ZhiheA210TftpBootStrategy", activate=False)
         strategy.target_ip = target_ip
@@ -189,6 +212,96 @@ def tftp(request):
                 strategy.transition("emmc")
             except Exception as exc:
                 print(f"\n[Warning] eMMC restore transition raised: {exc}")
+            try:
+                strategy.target.deactivate(strategy.console)
+            except Exception:
+                pass
+        if log_fp is not None:
+            log_fp.close()
+        if acquired:
+            _run_lg(["-p", place_selector, "release"], token=token, check=False)
+        if owned_reservation and token:
+            _run_lg(["cancel-reservation", token], token=token, check=False)
+
+
+@pytest.fixture(scope="module")
+def aosp(request):
+    pool_name = request.config.getoption("--pool") or "a210-aosp"
+    place_name = request.config.getoption("--place")
+    release_dir = request.config.getoption("--release-dir")
+    skip_flash = request.config.getoption("--skip-flash")
+    no_wipe = request.config.getoption("--no-wipe")
+    serial_log_path = request.config.getoption("--serial-log")
+    expected_kernel_prefix = request.config.getoption("--expected-kernel-prefix")
+
+    if not skip_flash:
+        assert release_dir, "Must specify --release-dir or AOSP_RELEASE_DIR unless --skip-flash is set"
+        rel_path = Path(release_dir)
+        assert rel_path.is_dir(), f"Release directory does not exist: {rel_path}"
+
+    if expected_kernel_prefix and not os.environ.get("VERSION"):
+        os.environ["VERSION"] = expected_kernel_prefix
+
+    token = os.environ.get("LG_TOKEN")
+    owned_reservation = False
+    place_selector = place_name or "+"
+    acquired = False
+    strategy = None
+    log_fp = None
+
+    try:
+        if not place_name and not token:
+            print(f"Waiting for available board in Labgrid pool 'pool={pool_name}'...")
+            token = _reserve_from_pool(pool_name)
+            os.environ["LG_TOKEN"] = token
+            owned_reservation = True
+            place_selector = "+"
+
+        allocated_place, target_ip, _ = _resolve_place_endpoints(
+            place_selector, token=token
+        )
+        print(f"Allocated Labgrid place '{allocated_place}' (pool={pool_name})")
+        Path("aosp_allocated_place.txt").write_text(allocated_place + "\n", encoding="utf-8")
+
+        _run_lg(["-p", place_selector, "acquire"], token=token)
+        acquired = True
+
+        log_fp = open(serial_log_path, "w", encoding="utf-8", errors="replace")
+        log_fp.write(f"# Allocated Labgrid Place: {allocated_place} (pool={pool_name})\n")
+        log_fp.flush()
+
+        env = Environment(str(BOARD_DIR / "client-aosp.yaml"))
+        if place_name:
+            env.config.data["targets"]["main"]["resources"][0]["RemotePlace"]["name"] = place_name
+        target = env.get_target("main")
+
+        console = target.get_driver("SerialDriver", activate=False)
+        _attach_console_logger(console, log_fp)
+
+        fb_driver = target.get_driver("AndroidFastbootDriver", activate=False)
+        fb_driver.fastboot.address = target_ip
+        if release_dir:
+            bundled_fb = Path(release_dir) / "fastboot"
+            if bundled_fb.is_file():
+                bundled_fb.chmod(bundled_fb.stat().st_mode | 0o111)
+                fb_driver.tool = str(bundled_fb)
+            else:
+                fb_driver.tool = shutil.which("fastboot") or "fastboot"
+
+        strategy = target.get_driver("ZhiheA210AospFastbootStrategy", activate=False)
+        strategy.target_ip = target_ip
+        strategy.release_dir = release_dir
+        strategy.wipe = not no_wipe
+        strategy.skip_flash = skip_flash
+
+        strategy.transition("shell")
+        yield target.get_driver("ShellDriver")
+    finally:
+        if strategy is not None:
+            try:
+                strategy.target.deactivate(strategy.shell)
+            except Exception:
+                pass
             try:
                 strategy.target.deactivate(strategy.console)
             except Exception:
