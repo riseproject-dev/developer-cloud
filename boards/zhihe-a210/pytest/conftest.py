@@ -67,6 +67,12 @@ def pytest_addoption(parser):
         default="",
         help="Optional expected kernel release prefix (e.g. '7.2.12' or '6.12')",
     )
+    parser.addoption(
+        "--require-adb",
+        action="store_true",
+        default=False,
+        help="Fail instead of skipping USB-C ADB tests when the exporter USB resource is detached",
+    )
 
 
 def _run_lg(
@@ -224,6 +230,46 @@ def tftp(request):
             _run_lg(["cancel-reservation", token], token=token, check=False)
 
 
+def _resolve_place_adb_serial(place_selector: str, token: str | None = None) -> str:
+    info = _run_lg(["-p", place_selector, "show"], token=token, check=False)
+    tag_match = re.search(r"adb_serial=([A-Za-z0-9._-]+)", info)
+    return tag_match.group(1) if tag_match else ""
+
+
+def _ensure_adb_authorized(shell_driver, force: bool = False) -> None:
+    if not force:
+        existing = shell_driver.run_check(
+            "su 0 sh -c 'test -s /data/misc/adb/adb_keys && echo PRESENT || echo MISSING'",
+            timeout=10.0,
+        )
+        if existing and existing[0].strip() == "PRESENT":
+            return
+
+    candidates = [
+        Path(os.environ.get("ADB_PUBKEY_PATH", "")) if os.environ.get("ADB_PUBKEY_PATH") else None,
+        Path("/var/lib/tftpboot/releases/adbkey.pub"),
+        Path.home() / ".android" / "adbkey.pub",
+    ]
+    pubkey = ""
+    for candidate in candidates:
+        if candidate and candidate.is_file():
+            pubkey = candidate.read_text(encoding="utf-8").strip()
+            if pubkey:
+                break
+    if not pubkey:
+        return
+
+    shell_driver.run_check(
+        f'su 0 sh -c \'pub="{pubkey}"; '
+        "mkdir -p /data/misc/adb && "
+        '(grep -qxF "$pub" /data/misc/adb/adb_keys 2>/dev/null || echo "$pub" >> /data/misc/adb/adb_keys) && '
+        "chown system:shell /data/misc/adb/adb_keys && "
+        "chmod 0640 /data/misc/adb/adb_keys && "
+        "restorecon /data/misc/adb/adb_keys 2>/dev/null || true'",
+        timeout=25.0,
+    )
+
+
 @pytest.fixture(scope="module")
 def aosp(request):
     pool_name = request.config.getoption("--pool") or "a210-aosp"
@@ -260,6 +306,7 @@ def aosp(request):
         allocated_place, target_ip, _ = _resolve_place_endpoints(
             place_selector, token=token
         )
+        adb_serial = _resolve_place_adb_serial(place_selector, token=token)
         print(f"Allocated Labgrid place '{allocated_place}' (pool={pool_name})")
         Path("aosp_allocated_place.txt").write_text(allocated_place + "\n", encoding="utf-8")
 
@@ -288,6 +335,15 @@ def aosp(request):
             else:
                 fb_driver.tool = shutil.which("fastboot") or "fastboot"
 
+        adb_driver = target.get_driver("ZhiheADBDriver", activate=False)
+        if adb_serial:
+            adb_driver.serial = adb_serial
+        if release_dir:
+            bundled_adb = Path(release_dir) / "adb"
+            if bundled_adb.is_file():
+                bundled_adb.chmod(bundled_adb.stat().st_mode | 0o111)
+                adb_driver.tool = str(bundled_adb)
+
         strategy = target.get_driver("ZhiheA210AospFastbootStrategy", activate=False)
         strategy.target_ip = target_ip
         strategy.release_dir = release_dir
@@ -295,7 +351,9 @@ def aosp(request):
         strategy.skip_flash = skip_flash
 
         strategy.transition("shell")
-        yield target.get_driver("ShellDriver")
+        shell_driver = target.get_driver("ShellDriver")
+        _ensure_adb_authorized(shell_driver, force=not skip_flash)
+        yield shell_driver
     finally:
         if strategy is not None:
             try:
@@ -312,3 +370,27 @@ def aosp(request):
             _run_lg(["-p", place_selector, "release"], token=token, check=False)
         if owned_reservation and token:
             _run_lg(["cancel-reservation", token], token=token, check=False)
+
+
+@pytest.fixture(scope="module")
+def aosp_adb(aosp, request):
+    require_adb = request.config.getoption("--require-adb")
+    target = aosp.target
+    adb_driver = target.get_driver("ZhiheADBDriver", activate=False)
+    if not adb_driver.usb_available:
+        msg = (
+            "USB-C ADB resource 'RemoteAndroidUSBFastboot' is not enumerated on the "
+            "Labgrid exporter (avail=False); verify the physical USB-C cable seating."
+        )
+        if require_adb:
+            pytest.fail(msg)
+        pytest.skip(msg)
+
+    target.activate(adb_driver)
+    try:
+        yield adb_driver
+    finally:
+        try:
+            target.deactivate(adb_driver)
+        except Exception:
+            pass

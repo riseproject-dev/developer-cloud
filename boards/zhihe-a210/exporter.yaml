@@ -1,11 +1,34 @@
-# Reference Labgrid exporter configuration for the `pool=a210-yocto` A210 pool
-# on the OSU-OSL board-farm-controller (/etc/labgrid/exporter.yaml).
+# Reference Labgrid exporter configuration for the Zhihe A210 pools
+# (`pool=a210-aosp` and `pool=a210-yocto`) on the OSU-OSL Labgrid exporter
+# (/etc/labgrid/exporter.yaml).
 #
-# Tag any board added to the Yocto CI pool on the coordinator via:
-#   labgrid-client -p <board-name> set-tags board=zhihe-a210 pool=a210-yocto
+# Tag boards on the coordinator via:
+#   labgrid-client -p a210-board-01 set-tags arch=riscv64 board=zhihe-a210 model=zhihe-a210 os=android pool=a210-aosp adb_serial=A210B5D762F3
+#   labgrid-client -p a210-board-03 set-tags arch=riscv64 board=zhihe-a210 model=zhihe-a210 pool=a210-yocto
 #
-# Serial port is matched by physical USB topology path (ID_PATH) rather than
+# Serial ports are matched by physical USB topology path (ID_PATH) rather than
 # /dev/ttyUSB* index so host USB re-enumeration never swaps boards.
+# USB-C Android ADB / USB Fastboot is matched by the board's unique USB serial
+# (ID_SERIAL_SHORT) paired with /etc/udev/rules.d/51-android-rise.rules
+# (ENV{adb_user}="yes", ATTR{power/control}="on").
+a210-board-01:
+  serial:
+    cls: USBSerialPort
+    match:
+      ID_PATH: pci-0000:00:1a.0-usb-0:1.2.3:1.0
+    speed: 115200
+  adb:
+    cls: AndroidUSBFastboot
+    usb_vendor_id: "18d1"
+    usb_product_id: "4ee7"
+    match:
+      ID_SERIAL_SHORT: A210B5D762F3
+  ssh:
+    cls: NetworkService
+    # Provisioned dynamically on the private CI VLAN by OSU-OSL DHCP
+    address: "<assigned-by-dhcp>"
+    username: root
+
 a210-board-03:
   serial:
     cls: USBSerialPort

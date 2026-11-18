@@ -1,10 +1,10 @@
-# Labgrid client configuration for pool-based Zhihe A210 AOSP flashing and boot
-# verification (`pool=a210-aosp`).
+# Labgrid client configuration for pool-based Zhihe A210 AOSP flashing, boot,
+# and USB-C ADB verification (`pool=a210-aosp`).
 #
 # Uses Labgrid's native UBootDriver (`init_commands` + `boot_commands`) to bring
 # up U-Boot DHCP and `fastboot udp`, AndroidNetFastboot + AndroidFastbootDriver
-# to flash eMMC over 1 GbE UDP port 5554, and ShellDriver on Android's UART
-# `console:/ $` shell.
+# to flash eMMC over 1 GbE UDP port 5554, ShellDriver on Android's UART
+# `console:/ $` shell, and ZhiheADBDriver bound to the exported USB-C resource.
 targets:
   main:
     resources:
@@ -67,6 +67,8 @@ targets:
           login_timeout: 180
           await_login_timeout: 3
           post_login_settle_time: 1
+      - ZhiheADBDriver:
+          name: adb
       - ZhiheA210AospFastbootStrategy:
           name: strategy
           bindings:
@@ -76,4 +78,5 @@ targets:
             shell: shell
 
 imports:
+  - adb_driver.py
   - aosp_strategy.py

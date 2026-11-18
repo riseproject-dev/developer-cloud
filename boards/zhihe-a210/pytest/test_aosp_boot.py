@@ -41,3 +41,21 @@ def test_userdata_and_metadata_mounted(aosp):
     mounts = aosp.run_check("grep -E ' /(data|metadata) ' /proc/mounts", timeout=15.0)
     joined = "\n".join(mounts)
     assert " /data " in joined and " /metadata " in joined, joined
+
+
+def test_usb_adb_connectivity(aosp_adb, tmp_path):
+    assert aosp_adb.get_state() == "device"
+    boot_prop = aosp_adb.run_check("getprop sys.boot_completed", timeout=15.0)[0].strip()
+    arch = aosp_adb.run_check("uname -m", timeout=15.0)[0].strip()
+    assert boot_prop == "1", f"Expected sys.boot_completed=1 over ADB, got '{boot_prop}'"
+    assert arch == "riscv64", f"Expected riscv64 over ADB, got '{arch}'"
+
+    payload = f"labgrid-adb-ok-{int(time.time())}\n"
+    src = tmp_path / "adb_probe_in.txt"
+    dst = tmp_path / "adb_probe_out.txt"
+    remote = "/data/local/tmp/labgrid_adb_probe.txt"
+    src.write_text(payload, encoding="utf-8")
+    aosp_adb.push(str(src), remote)
+    aosp_adb.pull(remote, str(dst))
+    aosp_adb.run_check(f"rm -f {remote}", timeout=15.0)
+    assert dst.read_text(encoding="utf-8") == payload

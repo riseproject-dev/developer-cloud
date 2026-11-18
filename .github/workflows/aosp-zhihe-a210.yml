@@ -7,6 +7,7 @@ on:
     paths:
       - ".github/workflows/aosp-zhihe-a210.yml"
       - "boards/zhihe-a210/client-aosp.yaml"
+      - "boards/zhihe-a210/adb_driver.py"
       - "boards/zhihe-a210/aosp_strategy.py"
       - "boards/zhihe-a210/pytest/test_aosp_boot.py"
   workflow_dispatch:
