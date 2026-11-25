@@ -48,13 +48,16 @@ def test_userdata_and_metadata_mounted(aosp):
 
 def test_aon_pmic_watchdog_loaded(aosp):
     mods = aosp.run_check("grep -E '^zhihe_wdt ' /proc/modules || true", timeout=15.0)
-    identities = aosp.run_check(
-        "su 0 sh -c 'cat /sys/class/watchdog/watchdog*/identity 2>/dev/null' || true",
+    bound = aosp.run_check(
+        "su 0 sh -c 'ls -1 /sys/bus/platform/drivers/zhihe-wdt/ /dev/watchdog* 2>/dev/null' || true",
         timeout=15.0,
     )
     assert any("zhihe_wdt" in line for line in mods), f"zhihe_wdt module not loaded: {mods}"
-    assert any("zhihe Watchdog" in line for line in identities), (
-        f"zhihe Watchdog not registered in /sys/class/watchdog: {identities}"
+    assert any("aon_wdt" in line for line in bound), (
+        f"zhihe-wdt driver not bound to aon_wdt platform device: {bound}"
+    )
+    assert any("/dev/watchdog" in line for line in bound), (
+        f"No /dev/watchdog* character device registered: {bound}"
     )
 
 
