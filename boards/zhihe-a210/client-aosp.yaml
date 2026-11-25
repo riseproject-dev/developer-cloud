@@ -39,9 +39,6 @@ targets:
           name: fastboot
           sparse_size: '128M'
           flash_images:
-            gpt: emmc-gpt_primary.img
-            mmc0boot0: emmc_boot-loader.img
-            uboot_env: emmc-uboot_env.img
             boot_a: boot.img
             boot_b: boot.img
             init_boot_a: init_boot.img

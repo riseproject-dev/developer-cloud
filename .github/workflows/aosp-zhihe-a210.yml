@@ -39,9 +39,12 @@ on:
         type: string
   repository_dispatch:
     types: [aosp-nightly-published]
+  schedule:
+    # Runs ~1.5h after android_manifest nightly.yml (01:23 UTC, ~3.5h build) finishes.
+    - cron: '37 6 * * *'
 
 concurrency:
-  group: aosp-zhihe-a210-${{ github.run_id }}
+  group: aosp-zhihe-a210-hw
   cancel-in-progress: false
 
 jobs:
@@ -50,7 +53,7 @@ jobs:
     runs-on:
       group: Developer-Cloud-HW
       labels: [a210-aosp, osuosl]
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       RELEASE_REPO: ${{ github.event.client_payload.release_repo || inputs.release_repo || 'riseproject-dev/android_manifest' }}
       REQUESTED_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag || 'latest-nightly' }}
@@ -66,6 +69,7 @@ jobs:
         if: env.SKIP_FLASH != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
           AUTH_ARGS=(-H "Accept: application/vnd.github+json")
@@ -77,6 +81,11 @@ jobs:
             TAG="$(curl -fsSL "${AUTH_ARGS[@]}" "https://api.github.com/repos/${RELEASE_REPO}/releases?per_page=20" \
               | jq -r '[.[] | select(.tag_name | startswith("android-17-nightly-"))][0].tag_name // empty')"
             if [ -z "${TAG}" ]; then
+              if [ "${EVENT_NAME}" = "schedule" ]; then
+                echo "No android-17-nightly-* release found on ${RELEASE_REPO}; skipping scheduled run."
+                echo "skip_already_validated=true" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
               echo "::warning::No android-17-nightly-* release found yet on ${RELEASE_REPO}; falling back to android-17-v1.0"
               TAG="android-17-v1.0"
             fi
@@ -90,6 +99,17 @@ jobs:
 
           REL_BASE="/var/lib/tftpboot/releases"
           mkdir -p "${REL_BASE}"
+          MARKER_FILE="${REL_BASE}/.last-validated-${POOL}-nightly"
+
+          if [ "${EVENT_NAME}" = "schedule" ] && [ -f "${MARKER_FILE}" ]; then
+            LAST_VALIDATED="$(tr -d '\r\n' < "${MARKER_FILE}")"
+            if [ "${LAST_VALIDATED}" = "${TAG}" ]; then
+              echo "Nightly ${TAG} was already hardware-validated on pool=${POOL}; skipping duplicate scheduled flash."
+              echo "skip_already_validated=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "skip_already_validated=false" >> "$GITHUB_OUTPUT"
 
           # Check release assets via GitHub API to locate the *-a210-evb.tar.gz asset
           REL_JSON="$(curl -fsSL "${AUTH_ARGS[@]}" "https://api.github.com/repos/${RELEASE_REPO}/releases/tags/${TAG}")"
@@ -132,6 +152,7 @@ jobs:
           ls -1dt "${REL_BASE}"/rise-android-17-nightly-*-a210-evb 2>/dev/null | tail -n +6 | xargs -r rm -rf || true
 
       - name: Run AOSP Flash & Boot Verification via Labgrid
+        if: steps.stage_release.outputs.skip_already_validated != 'true'
         env:
           LG_COORDINATOR: "127.0.0.1:20408"
           RELEASE_DIR: ${{ steps.stage_release.outputs.release_dir || '' }}
@@ -152,11 +173,22 @@ jobs:
             --junitxml="aosp_boot_results.xml" \
             "${EXTRA_ARGS[@]}"
 
+      - name: Record Validated Nightly Marker
+        if: success() && env.SKIP_FLASH != 'true' && steps.stage_release.outputs.skip_already_validated != 'true'
+        env:
+          RESOLVED_TAG: ${{ steps.stage_release.outputs.release_tag || '' }}
+        run: |
+          if [[ "${RESOLVED_TAG}" == android-17-nightly-* ]]; then
+            printf '%s\n' "${RESOLVED_TAG}" > "/var/lib/tftpboot/releases/.last-validated-${POOL}-nightly"
+            echo "Recorded validated nightly marker: ${RESOLVED_TAG}"
+          fi
+
       - name: Publish Boot Summary
         if: always()
         env:
           RESOLVED_TAG: ${{ steps.stage_release.outputs.release_tag || env.REQUESTED_TAG }}
           RELEASE_DIR: ${{ steps.stage_release.outputs.release_dir || '(skipped flash)' }}
+          SKIPPED_VALIDATED: ${{ steps.stage_release.outputs.skip_already_validated || 'false' }}
         run: |
           ALLOCATED="dynamic"
           if [ -f aosp_allocated_place.txt ]; then
@@ -168,6 +200,7 @@ jobs:
             echo "- **Labgrid Pool**: \`pool=${POOL}\` (allocated place: \`${ALLOCATED}\`)"
             echo "- **Staged Release Dir**: \`${RELEASE_DIR}\`"
             echo "- **Skip Flash**: \`${SKIP_FLASH}\`"
+            echo "- **Already Validated (Scheduled No-Op)**: \`${SKIPPED_VALIDATED}\`"
             if [ -f aosp_serial_boot.log ]; then
               echo ""
               echo "#### Captured Target Serial Tail"
@@ -178,7 +211,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload AOSP UART Log & JUnit XML
-        if: always()
+        if: always() && steps.stage_release.outputs.skip_already_validated != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: aosp-a210-hw-results-${{ github.run_id }}

@@ -328,9 +328,16 @@ def aosp(request):
         fb_driver = target.get_driver("AndroidFastbootDriver", activate=False)
         fb_driver.fastboot.address = target_ip
         if release_dir:
+            rel_bin_dir = str(Path(release_dir).resolve())
+            cur_path = os.environ.get("PATH", "")
+            if rel_bin_dir not in cur_path.split(os.pathsep):
+                os.environ["PATH"] = f"{rel_bin_dir}{os.pathsep}{cur_path}"
+            for helper_bin in ("fastboot", "adb", "mke2fs"):
+                helper_path = Path(release_dir) / helper_bin
+                if helper_path.is_file():
+                    helper_path.chmod(helper_path.stat().st_mode | 0o111)
             bundled_fb = Path(release_dir) / "fastboot"
             if bundled_fb.is_file():
-                bundled_fb.chmod(bundled_fb.stat().st_mode | 0o111)
                 fb_driver.tool = str(bundled_fb)
             else:
                 fb_driver.tool = shutil.which("fastboot") or "fastboot"

@@ -43,6 +43,18 @@ def test_userdata_and_metadata_mounted(aosp):
     assert " /data " in joined and " /metadata " in joined, joined
 
 
+def test_aon_pmic_watchdog_loaded(aosp):
+    mods = aosp.run_check("grep -E '^zhihe_wdt ' /proc/modules || true", timeout=15.0)
+    identities = aosp.run_check(
+        "cat /sys/class/watchdog/watchdog*/identity 2>/dev/null || true",
+        timeout=15.0,
+    )
+    assert any("zhihe_wdt" in line for line in mods), f"zhihe_wdt module not loaded: {mods}"
+    assert any("zhihe Watchdog" in line for line in identities), (
+        f"zhihe Watchdog not registered in /sys/class/watchdog: {identities}"
+    )
+
+
 def test_usb_adb_connectivity(aosp_adb, tmp_path):
     assert aosp_adb.get_state() == "device"
     boot_prop = aosp_adb.run_check("getprop sys.boot_completed", timeout=15.0)[0].strip()
