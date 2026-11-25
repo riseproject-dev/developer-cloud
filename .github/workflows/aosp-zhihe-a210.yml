@@ -57,9 +57,9 @@ jobs:
     env:
       RELEASE_REPO: ${{ github.event.client_payload.release_repo || inputs.release_repo || 'riseproject-dev/android_manifest' }}
       REQUESTED_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag || 'latest-nightly' }}
-      POOL: ${{ inputs.pool || 'a210-aosp' }}
+      POOL: ${{ github.event.client_payload.pool || inputs.pool || 'a210-aosp' }}
       SKIP_FLASH: ${{ github.event_name == 'push' && 'true' || (inputs.skip_flash && 'true' || 'false') }}
-      KERNEL_PREFIX: ${{ inputs.expected_kernel_prefix || '' }}
+      KERNEL_PREFIX: ${{ github.event.client_payload.expected_kernel_prefix || inputs.expected_kernel_prefix || '7.1' }}
     steps:
       - name: Checkout developer-cloud
         uses: actions/checkout@v4
