@@ -39,9 +39,7 @@ class ZhiheA210AospFastbootStrategy(Strategy):
     def _trigger_reboot_to_uboot(self) -> None:
         self.console.sendline("")
         time.sleep(0.2)
-        self.console.sendline(
-            "su 0 sh -c 'insmod /data/local/tmp/zhihe_wdt.ko 2>/dev/null || true; sync; reboot'"
-        )
+        self.console.sendline("su 0 sh -c 'sync; reboot'")
         time.sleep(2.5)
 
     def _flash_release_images(self) -> None:

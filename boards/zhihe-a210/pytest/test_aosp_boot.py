@@ -6,13 +6,16 @@ import helpers
 
 
 def test_boot_completed(aosp):
-    deadline = time.monotonic() + 150.0
+    deadline = time.monotonic() + 180.0
     last_val = ""
     while time.monotonic() < deadline:
-        out = aosp.run_check("getprop sys.boot_completed", timeout=15.0)
-        last_val = out[0].strip() if out else ""
-        if last_val == "1":
-            break
+        try:
+            out = aosp.run_check("getprop sys.boot_completed", timeout=20.0)
+            last_val = out[0].strip() if out else ""
+            if last_val == "1":
+                break
+        except Exception as exc:
+            print(f"[poll retry] getprop sys.boot_completed transient UART error: {exc}")
         time.sleep(3.0)
     assert last_val == "1", f"Android sys.boot_completed did not reach 1 (last='{last_val}')"
 
@@ -46,7 +49,7 @@ def test_userdata_and_metadata_mounted(aosp):
 def test_aon_pmic_watchdog_loaded(aosp):
     mods = aosp.run_check("grep -E '^zhihe_wdt ' /proc/modules || true", timeout=15.0)
     identities = aosp.run_check(
-        "cat /sys/class/watchdog/watchdog*/identity 2>/dev/null || true",
+        "su 0 sh -c 'cat /sys/class/watchdog/watchdog*/identity 2>/dev/null' || true",
         timeout=15.0,
     )
     assert any("zhihe_wdt" in line for line in mods), f"zhihe_wdt module not loaded: {mods}"

@@ -359,6 +359,14 @@ def aosp(request):
 
         strategy.transition("shell")
         shell_driver = target.get_driver("ShellDriver")
+        # Silence async /dev/kmsg init/cgroup lines on ttyS4 so they do not
+        # interleave into Labgrid ShellDriver's MARKER prompt framing.
+        for _ in range(3):
+            try:
+                shell_driver.run_check("su 0 sh -c 'echo 1 > /proc/sys/kernel/printk'", timeout=15.0)
+                break
+            except Exception:
+                pass
         _ensure_adb_authorized(shell_driver, force=not skip_flash)
         yield shell_driver
     finally:
