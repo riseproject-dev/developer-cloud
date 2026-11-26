@@ -57,3 +57,8 @@ Phase 1 (MVP)                             Phase 2 (Production Cloud)
 * **[OpenBMC RISC-V BMC Plan](docs/phase-2-openbmc-production/openbmc-riscv-bmc-plan.md):** Implementation plan for OpenBMC multi-host Redfish controllers on x86 exporter hardware.
 * **[TFTP Boot & GHA Flashing Design](docs/architecture-design/tftp-boot-gha-and-flashing-design.md):** GitHub Actions workflows, TFTP boot, and exclusive container pool testing designs.
 * **[Build-Centric TFTP Storage & Release Lifecycle](docs/architecture-design/build-centric-tftp-and-release-lifecycle.md):** Immutable per-build TFTP directory layout, Hetzner cross-compilation CI pipeline, 90-day retention policy, and monthly eMMC release cycle.
+
+### 🔌 Hardware Profiles & Specs (`boards/`)
+* **[Hardware Catalog & Matrix](boards/README.md):** Target hardware catalog matrix across platforms in the RISC-V Developer Cloud.
+* **[Hardware Onboarding Policy](boards/compliance-requirements.md):** Target hardware onboarding tracks, Stage 1-3 compliance gates, RISE source mirroring, binary blob governance, and upstreaming requirements.
+* **[Alibaba Zhihe A210](boards/zhihe-a210/README.md):** Hardware overview, source code mirrors, Labgrid CI assets, and [compliance checklist](boards/zhihe-a210/compliance-checklist.md).
